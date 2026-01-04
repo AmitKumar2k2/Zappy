@@ -22,6 +22,13 @@ export function LocationFetcher({ onLocationFound, onError, label = "Get Current
         }
 
         setStatus('loading');
+        attemptLocationFetch(1);
+    };
+
+    const attemptLocationFetch = (attempt: number) => {
+        // Use high accuracy for the first 2 attempts, then fallback to low accuracy
+        const useHighAccuracy = attempt < 3;
+
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 const { latitude, longitude } = position.coords;
@@ -30,12 +37,29 @@ export function LocationFetcher({ onLocationFound, onError, label = "Get Current
                 onLocationFound(latitude, longitude);
             },
             (error) => {
-                setStatus('error');
-                let msg = "Failed to get location";
-                if (error.code === 1) msg = "Location permission denied"; // PERMISSION_DENIED
-                onError?.(msg);
+                console.warn(`Location attempt ${attempt} failed:`, error.message);
+
+                if (attempt < 3) {
+                    // Retry after a short delay
+                    setTimeout(() => {
+                        attemptLocationFetch(attempt + 1);
+                    }, 1500);
+                } else {
+                    // Final failure
+                    setStatus('error');
+                    let msg = "Failed to get location.";
+                    if (error.code === 1) msg = "Location permission denied. Please allow access.";
+                    else if (error.code === 2) msg = "Location unavailable. Try moving to a better spot.";
+                    else if (error.code === 3) msg = "Location request timed out. Please try again.";
+
+                    onError?.(msg);
+                }
             },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            {
+                enableHighAccuracy: useHighAccuracy,
+                timeout: 5000 + (attempt * 2000), // Increase timeout with attempts: 7s, 9s, 11s
+                maximumAge: 0
+            }
         );
     };
 
